@@ -30,7 +30,29 @@ verify(N, Program) :-
     checkProgram(Program),     % Input validation
     read_file_to_terms(Program, [vars(V), arrays(A), P], []), % File to terms
     initState([V, A, P], N, StanPoczatkowy), % Initialise state
-    write(StanPoczatkowy).
+    write(StanPoczatkowy), nl.
+    %step([_, _, P], StanPoczatkowy, 0, Wyj),
+    %verifyCritSection(P, Wyj, X),
+
+verifyCritSection(P, state(_, _, S), X) :- verifyCritSection(P, S, X).
+verifyCritSection(program(P), [[_|S]|T], X1) :-
+    verifyCritSection(program(P), T, X),
+    S1 is S-1,
+    (
+        nth0(S1, P, sekcja)
+        ->  X1 is X+1
+        ; X1 is X
+    ).
+
+verifyCritSection(_, [], 0).
+
+%run(P, CurrState, [States|Steps]):
+
+printSteps([]).
+printSteps([[PrId|Step]|T]) :-
+    format('    Proces ~d: ~d', [PrId, Step]),nl,
+    printSteps(T).
+
 
 % Initial State
 % state(Variables, Arrays, Steps)
@@ -40,19 +62,12 @@ verify(N, Program) :-
 %              0 means that program did not start yet
 
 initState(Program, N, StanPoczatkowy) :-
-    Program = [V, A, P],
-    write(V),
+    Program = [V, A, _],
     buildVars(V, Vars),
-    nl,write(Vars),nl,
     buildSteps(N, Steps),
     buildArray(N, Array),
-    nl,write("ESSA - "), write(Array), nl,
     buildArrays(A, Arrays, Array),
-    nl,write(Arrays),nl,
-    nl,write(P),nl,nl,nl,
-    StanPoczatkowy = state(Vars, Arrays, Steps),
-    step(Program, StanPoczatkowy, 1, Wyj),
-    nl,write(Wyj),nl.
+    StanPoczatkowy = state(Vars, Arrays, Steps).
 
 
 step([_, _, program(P)], state(V, A, S), PrId, Wyj) :-
@@ -125,10 +140,12 @@ buildSteps(N0, N, [[N0|1]| L]) :-
     N1 is N0 + 1,
     buildSteps(N1, N, L).
 
-update(KV, AL, AL0) :-
-    KV = [K|_],
-    delete(AL, [K|_], AL_KV),
-    put(KV, AL_KV, AL0).
+% ToDo ------------------------------------------------------------------- SHOULD NOT CHANGE ORDER OF ELEMENTS...NEVER!
+update([K|V], AL, AL0) :- replace([K|_], [K|V], AL, AL0).
+
+replace(_, _, [], []).
+replace(O, R, [O|T], [R|T2]) :- replace(O, R, T, T2).
+replace(O, R, [H|T], [H|T2]) :- H \= O, replace(O, R, T, T2).
 
 put(KV, AL, AL0) :-
     KV = [K|V],
