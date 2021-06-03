@@ -28,11 +28,49 @@ checkProgram(Program) :-       % Checks if Program is valid
 verify(N, Program) :-
     checkN(N),
     checkProgram(Program),     % Input validation
-    read_file_to_terms(Program, [vars(V), arrays(A), P], []), % File to terms
+    read_file_to_terms(Program, [variables(V), arrays(A), P], []), % File to terms
     initState([V, A, P], N, StanPoczatkowy), % Initialise state
-    write(StanPoczatkowy), nl.
+    write(StanPoczatkowy), nl,
+    runDFA(StanPoczatkowy, P, N).
     %step([_, _, P], StanPoczatkowy, 0, Wyj),
     %verifyCritSection(P, Wyj, X),
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% PlayGround Functions
+
+runDFA(InitialState, Program, N) :-
+    pidsList(N, Pids),
+    iteratePids(Pids, Wynik, [], [], InitialState, Program, N),
+    write("Skonczylo sie? xd"), write(Wynik).
+
+iteratePids([], Acc, Acc, _, _, _) :- write("Jumperoooo"), nl, write(Acc).
+iteratePids([Pid|Pids], Wynik, Acc1, Paths, CurrentState, Program, N) :-
+    nl,nl,write(Pid), nl,
+    write("Essa"), nl,
+    write(Pids), nl,
+    write(CurrentState), nl,
+    write(Acc1), nl,
+    (
+        member(CurrentState, Acc1)
+        -> Wynik = Acc1
+        ; verifyCritSection(Program, CurrentState, X),
+        (
+          X >= 2
+          -> write("Ahojjjj"), nl, printSteps(Paths), write("AUUUU!"), nl, false %ToDo - Check if ! would work
+          ; pidsList(N, NewPidsList),
+            step([_, _, Program], CurrentState, Pid, NewState),
+            getCurrentStep(Pid, CurrentState, Step),
+            write(Pids),
+            iteratePids(Pids, Wynik1, [CurrentState|Acc1], Paths, CurrentState, Program, N),
+            write("Wynik1 = "), write(Wynik1), nl,
+            iteratePids(NewPidsList, Wynik, Wynik1, [[Pid|Step]|Paths], NewState, Program, N),
+            write("Global? = "), write(Wynik), nl
+        )
+    ).
+
+getCurrentStep(PrId, state(_, _, S), Step) :- get(PrId, S, Step).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5%%%%%%%%%%%%%%%%%%%%%%%%%
 
 verifyCritSection(P, state(_, _, S), X) :- verifyCritSection(P, S, X).
 verifyCritSection(program(P), [[_|S]|T], X1) :-
@@ -59,7 +97,6 @@ printSteps([[PrId|Step]|T]) :-
 % Variables - List of variables
 % Arrays - List of Arrays (From 0 to N)
 % Steps - Key: Program Pid, Value: Line to be executed by program of this pid
-%              0 means that program did not start yet
 
 initState(Program, N, StanPoczatkowy) :-
     Program = [V, A, _],
@@ -84,23 +121,25 @@ parse(assign(Zmienna, WyrArytm), state(V, A, S), PrId, state(Vw, A, Sw)) :-
     update([Zmienna|E], V, Vw),
     moveStep(state(_, _, S), PrId, state(_, _, Sw)).
 
-parse(assign(arr(Zmienna, WyrArytm1), WyrArytm2), state(V, A, S), PrId, state(V, Aw, Sw)) :-
+parse(assign(array(Zmienna, WyrArytm1), WyrArytm2), state(V, A, S), PrId, state(V, Aw, Sw)) :-
     atom(Zmienna),
     wyrArytm(WyrArytm2, state(V, A, _), PrId, E),
     wyrArytm(WyrArytm1, state(V, A, _), PrId, P),
     get(Zmienna, A, [Arr|_]),
-    update([P|E], Arr, Arrw),
+    update([P|E], [Arr], Arrw),
     update([Zmienna|Arrw], A, Aw),
     moveStep(state(_, _, S), PrId, state(_, _, Sw)).
 
 parse(goto(Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
     update([PrId|Liczba], S, Sw).
 
-%ToDo ---- Check if it should be Number or get be wyrArytm
 parse(condGoto(WyrLogiczne, Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
+    write("Essa"), nl,
+    write(WyrLogiczne),nl,
     wyrLogiczne(WyrLogiczne, state(V, A, _), PrId, Output),
+    write(Output), nl,
     (Output == true
-        -> update([PrId|Liczba], S, Sw)
+        -> write("Mar"), update([PrId|Liczba], S, Sw), write("IO")
         ; moveStep(state(V, A, S), PrId, state(V, A, Sw))
     ).
 
@@ -112,7 +151,6 @@ moveStep(state(V, A, S), PrId, state(V, A, Sw)) :-
     get(PrId, S, Step),
     Step2 is Step + 1,
     update([PrId|Step2], S, Sw).
-
 
 buildArrays(A, Arrays, Arr) :- buildArrays(A, [], Arrays, Arr).
 buildArrays([], L, L, _).
@@ -140,7 +178,20 @@ buildSteps(N0, N, [[N0|1]| L]) :-
     N1 is N0 + 1,
     buildSteps(N1, N, L).
 
-% ToDo ------------------------------------------------------------------- SHOULD NOT CHANGE ORDER OF ELEMENTS...NEVER!
+pidsList(N, List) :-
+    N1 is N-1,
+    pidsList(0, N1, List).
+
+pidsList(N, N, [N]).
+pidsList(N0, N, [N0| List]) :-
+    N0 < N,
+    N1 is N0 + 1,
+    pidsList(N1, N, List).
+
+
+
+%% Arrays, Variables and Steps list managment
+% Update List under the Key
 update([K|V], AL, AL0) :- replace([K|_], [K|V], AL, AL0).
 
 replace(_, _, [], []).
@@ -158,12 +209,6 @@ put(KV, AL, [KV | AL]).
 get(K, AL, V):-
     member([K|V], AL).
 
-dupli(L1,N,L2) :- dupli(L1,N,L2,N).
-dupli([],_,[],_).
-dupli([_|Xs],N,Ys,0) :- dupli(Xs,N,Ys,N).
-dupli([X|Xs],N,[X|Ys],K) :- K > 0, K1 is K - 1, dupli([X|Xs],N,Ys,K1).
-
-
 % zmienna() ....
 zmienna(Ident, state(V, _, _), PrId, Output) :-
     atom(Ident),
@@ -172,10 +217,14 @@ zmienna(Ident, state(V, _, _), PrId, Output) :-
         ; get(Ident, V, Output)
     ).
 
-zmienna(arr(Ident, WyrArytm), state(V, A, _), PrId, Output) :-
+zmienna(array(Ident, WyrArytm), state(V, A, _), PrId, Output) :-
+    write("Array intepretation"), nl,
     wyrArytm(WyrArytm, state(V, A, _), PrId, E),
-    get(Ident, A, Array),
-    get(E, Array, Output).
+    write(E), nl,
+    write(Ident), nl,
+    get(Ident, A, [Array]),
+    write(Array), nl,
+    get(E, Array, Output), write(Output),nl,write("Dupa").
 
 % wyrArytm()....
 
@@ -218,8 +267,12 @@ wyrLogiczne(WyrProste1<WyrProste2, state(V, A, _), PrId, Output) :-
     ).
 
 wyrLogiczne(WyrProste1=WyrProste2, state(V, A, _), PrId,  Output) :-
+    write(WyrProste1), nl,
+    write(WyrProste2), nl,
     wyrArytm(WyrProste1, state(V, A, _), PrId, E1),
+    nl, write("Array to to"), write(E1), nl,
     wyrArytm(WyrProste2, state(V, A, _), PrId, E2),
+    nl,write("KurwaJakieJaja"), nl, write(E2), nl,
     (E1 == E2
         -> Output = true
         ; Output = false
