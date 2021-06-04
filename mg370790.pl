@@ -38,31 +38,56 @@ verify(N, Program) :-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% PlayGround Functions
+fold([], Acc, Acc, _).
+fold([A|As], B, Acc1, F) :-
+   call(F, Acc1, A, Acc2),
+   fold(As, B, Acc2, F).
 
-runDFA(InitialState, Program, N) :-
-    pidsList(N, Pids),
-    iteratePids(Pids, Wynik, [], [], InitialState, Program, N),
-    write("Skonczylo sie? xd"), write(Wynik).
+
+
+runDFA2(CurrentState, Program, N, Paths, StateAcc, PrId, Wynik) :-
+    step([_, _, Program], CurrentState, PrId, NewState),
+    getCurrentStep(PrId, CurrentState, Step),
+    runDFA2(NewState, Program, N, [[PrId|Step]|Paths], StateAcc, Wynik).
+
+runDFA2(CurrentState, Program, N, Paths, StateAcc, Wynik) :-(
+    member(CurrentState, StateAcc)
+    -> Wynik = StateAcc % Idk, what should be there tbh
+    ; verifyCritSection(Program, CurrentState, X),
+    (X >= 2
+    -> write("ahojjjj"), nl, write(CurrentState), nl, write(StateAcc), nl, printSteps(Paths), nl, false %Or false?!
+    ; pidsList(N, NewPidsList),
+    fold(NewPidsList, Wynik, [CurrentState|StateAcc], runDFA2(CurrentState, Program, N, Paths))
+    )
+).
+
+%%%%%%%%%%%
+
+runDFA(InitialState, Program, N) :- runDFA2(InitialState, Program, N, [], [], _).
+%    pidsList(N, Pids),
+%    iteratePids(Pids, Wynik, [], [], InitialState, Program, N),
+%    write("Skonczylo sie? xd"), write(Wynik).
 
 iteratePids([], Acc, Acc, _, _, _) :- write("Jumperoooo"), nl, write(Acc).
+iteratePids([], _, _, _,_,_) :- nl, write("Wtf xd"),nl.
 iteratePids([Pid|Pids], Wynik, Acc1, Paths, CurrentState, Program, N) :-
     nl,nl,write(Pid), nl,
     write("Essa"), nl,
     write(Pids), nl,
     write(CurrentState), nl,
     write(Acc1), nl,
+    step([_, _, Program], CurrentState, Pid, NewState),
     (
-        member(CurrentState, Acc1)
+        member(NewState, Acc1)
         -> Wynik = Acc1
-        ; verifyCritSection(Program, CurrentState, X),
+        ; verifyCritSection(Program, NewState, X),
         (
           X >= 2
-          -> write("Ahojjjj"), nl, printSteps(Paths), write("AUUUU!"), nl, false %ToDo - Check if ! would work
+          -> write("Ahojjjj"), nl, write(Paths), nl, printSteps(Paths), write("AUUUU!"), nl, false %ToDo - Check if ! would work
           ; pidsList(N, NewPidsList),
-            step([_, _, Program], CurrentState, Pid, NewState),
             getCurrentStep(Pid, CurrentState, Step),
             write(Pids),
-            iteratePids(Pids, Wynik1, [CurrentState|Acc1], Paths, CurrentState, Program, N),
+            iteratePids(Pids, Wynik1, [CurrentState|Acc1], Paths, NewState, Program, N),
             write("Wynik1 = "), write(Wynik1), nl,
             iteratePids(NewPidsList, Wynik, Wynik1, [[Pid|Step]|Paths], NewState, Program, N),
             write("Global? = "), write(Wynik), nl
@@ -88,8 +113,8 @@ verifyCritSection(_, [], 0).
 
 printSteps([]).
 printSteps([[PrId|Step]|T]) :-
-    format('    Proces ~d: ~d', [PrId, Step]),nl,
-    printSteps(T).
+    printSteps(T),
+    format('    Proces ~d: ~d', [PrId, Step]),nl.
 
 
 % Initial State
@@ -127,19 +152,22 @@ parse(assign(array(Zmienna, WyrArytm1), WyrArytm2), state(V, A, S), PrId, state(
     wyrArytm(WyrArytm1, state(V, A, _), PrId, P),
     get(Zmienna, A, [Arr|_]),
     update([P|E], [Arr], Arrw),
+    write(Arrw), nl,
+    [XD] = Arrw,
+    write(XD), nl,
     update([Zmienna|Arrw], A, Aw),
+    write(A), nl,
+    write([P|E]), nl,
+    write(Aw), nl,
     moveStep(state(_, _, S), PrId, state(_, _, Sw)).
 
 parse(goto(Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
     update([PrId|Liczba], S, Sw).
 
 parse(condGoto(WyrLogiczne, Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
-    write("Essa"), nl,
-    write(WyrLogiczne),nl,
     wyrLogiczne(WyrLogiczne, state(V, A, _), PrId, Output),
-    write(Output), nl,
     (Output == true
-        -> write("Mar"), update([PrId|Liczba], S, Sw), write("IO")
+        -> update([PrId|Liczba], S, Sw)
         ; moveStep(state(V, A, S), PrId, state(V, A, Sw))
     ).
 
@@ -218,13 +246,9 @@ zmienna(Ident, state(V, _, _), PrId, Output) :-
     ).
 
 zmienna(array(Ident, WyrArytm), state(V, A, _), PrId, Output) :-
-    write("Array intepretation"), nl,
     wyrArytm(WyrArytm, state(V, A, _), PrId, E),
-    write(E), nl,
-    write(Ident), nl,
     get(Ident, A, [Array]),
-    write(Array), nl,
-    get(E, Array, Output), write(Output),nl,write("Dupa").
+    get(E, Array, Output).
 
 % wyrArytm()....
 
@@ -267,12 +291,8 @@ wyrLogiczne(WyrProste1<WyrProste2, state(V, A, _), PrId, Output) :-
     ).
 
 wyrLogiczne(WyrProste1=WyrProste2, state(V, A, _), PrId,  Output) :-
-    write(WyrProste1), nl,
-    write(WyrProste2), nl,
     wyrArytm(WyrProste1, state(V, A, _), PrId, E1),
-    nl, write("Array to to"), write(E1), nl,
     wyrArytm(WyrProste2, state(V, A, _), PrId, E2),
-    nl,write("KurwaJakieJaja"), nl, write(E2), nl,
     (E1 == E2
         -> Output = true
         ; Output = false
