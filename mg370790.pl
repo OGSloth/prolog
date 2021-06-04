@@ -48,7 +48,8 @@ fold([A|As], B, Acc1, F) :-
 runDFA2(CurrentState, Program, N, Paths, StateAcc, PrId, Wynik) :-
     step([_, _, Program], CurrentState, PrId, NewState),
     getCurrentStep(PrId, CurrentState, Step),
-    runDFA2(NewState, Program, N, [[PrId|Step]|Paths], StateAcc, Wynik).
+    runDFA2(NewState, Program, N, [[PrId|Step]|Paths], StateAcc, Wynik),
+    write("Dziala jak chuj").
 
 runDFA2(CurrentState, Program, N, Paths, StateAcc, Wynik) :-(
     member(CurrentState, StateAcc)
@@ -151,14 +152,8 @@ parse(assign(array(Zmienna, WyrArytm1), WyrArytm2), state(V, A, S), PrId, state(
     wyrArytm(WyrArytm2, state(V, A, _), PrId, E),
     wyrArytm(WyrArytm1, state(V, A, _), PrId, P),
     get(Zmienna, A, [Arr|_]),
-    update([P|E], [Arr], Arrw),
-    write(Arrw), nl,
-    [XD] = Arrw,
-    write(XD), nl,
-    update([Zmienna|Arrw], A, Aw),
-    write(A), nl,
-    write([P|E]), nl,
-    write(Aw), nl,
+    update([P|E], Arr, Arrw),
+    update([Zmienna|[Arrw]], A, Aw),
     moveStep(state(_, _, S), PrId, state(_, _, Sw)).
 
 parse(goto(Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
