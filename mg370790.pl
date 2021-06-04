@@ -25,6 +25,8 @@ checkProgram(Program) :-     % Checks if Program is valid
     false                  % Otherwise - fail
   ).
 
+% The program main function
+% Gets input, parses, interprates and searches for the result
 verify(N, Program) :-
   checkN(N),
   checkProgram(Program),                        % Input validation
@@ -39,43 +41,49 @@ fold([A|As], B, Acc1, F) :-
    call(F, Acc1, A, Acc2),   % Call passed function, new accumulator
    fold(As, B, Acc2, F).     % Continue folding with new accumulator
 
+% Function searching for the result
+% "DFA" is in current state with pointed transition
+% Goes there, saves path and goes into the node
 runDFA(CurrSt, Program, N, Paths, StAcc, PrId, Wynik) :-
   step([_, _, Program], CurrSt, PrId, NewState),
   getCurrentStep(PrId, CurrSt, Step),
   runDFA(NewState, Program, N, [[PrId|Step]|Paths], StAcc, Wynik).
 
+% Check if node is valid, go to the neighbour nodes
 runDFA(CurrSt, Program, N, Paths, StAcc, Wynik) :-(
-  member(CurrSt, StAcc)
-  -> Wynik = StAcc
-  ; verifyCritSection(Program, CurrSt, X),
-  (X >= 2
+  member(CurrSt, StAcc)                     % If node is checked, finish
+  -> Wynik = StAcc                          % (This branch returns accumulator)
+  ; verifyCritSection(Program, CurrSt, X),  % Otherwise check critical sections
+  (X >= 2                                   % X >= 2 -> 2 or more pids in crit
   -> write("Program jest niepoprawny."), nl,
      write("Niepoprawny przeplot:"), nl,
-     printSteps(Paths), write(CurrSt), false
-  ; pidsList(N, NPL),
+     printSteps(Paths), write(CurrSt), false % Failure handling
+  ; pidsList(N, NPL),                       % Initiate next transtitons
   fold(NPL, Wynik, [CurrSt|StAcc], runDFA(CurrSt, Program, N, Paths))
-  )
+  ) % Go further, from node to transitioned nodes
 ).
 
+% startDFA \3 starts startDFA \6 with empty accumulators
 startDFA(InitSt, Program, N) :- runDFA(InitSt, Program, N, [], [], _).
 
+% Gets program line to be executed by program with pid = PrId
 getCurrentStep(PrId, state(_, _, S), Step) :- get(PrId, S, Step).
 
+% Checks how many programs are currently in critical section
 verifyCritSection(P, state(_, _, S), X) :- verifyCritSection(P, S, X).
 verifyCritSection(program(P), [[_|S]|T], X1) :-
-  verifyCritSection(program(P), T, X),
-  S1 is S-1,
+  verifyCritSection(program(P), T, X), % Check recursivly
+  S1 is S-1,                           % Align step and list iterations diffs
   (
-    nth0(S1, P, sekcja)
-    ->  X1 is X+1
-    ; X1 is X
+    nth0(S1, P, sekcja)                % Check if program is in section
+    ->  X1 is X+1                      % If so, add one to the result
+    ; X1 is X                          % Otherwise continue
   ).
 
 verifyCritSection(_, [], 0).
 
-
-
-
+% Simple function to print path from initial state to 
+% critical section overlapse
 printSteps([]).
 printSteps([[PrId|Step]|T]) :-
   printSteps(T),
@@ -89,32 +97,37 @@ printSteps([[PrId|Step]|T]) :-
 % Steps - Key: Program Pid, Value: Line to be executed by program of this pid
 
 initState(Program, N, StanPoczatkowy) :-
-  Program = [V, A, _],
-  buildVars(V, Vars),
-  buildSteps(N, Steps),
-  buildArray(N, Array),
-  buildArrays(A, Arrays, Array),
-  StanPoczatkowy = state(Vars, Arrays, Steps).
+  Program = [V, A, _],                          % Take input
+  buildVars(V, Vars),                           % Create Variables list
+  buildSteps(N, Steps),                         % Create Steps list
+  buildArray(N, Array),                         % Create an empty array
+  buildArrays(A, Arrays, Array),                % Create Arrays list
+  StanPoczatkowy = state(Vars, Arrays, Steps).  % Put all together as state
 
-
+% Crucial program function
+% Takes Program (As initialiy parsed tokens)
+% Current state, id and output nwe state
 step([_, _, program(P)], state(V, A, S), PrId, Wyj) :-
-  get(PrId, S, Step),
-  GoTo is Step-1,
-  nth0(GoTo, P, X),
-  parse(X, state(V, A, S), PrId, Wyj).
+  get(PrId, S, Step),                   % Take program line to be executed
+  GoTo is Step-1,                       % Align iterations differences
+  nth0(GoTo, P, X),                     % Take program's line
+  parse(X, state(V, A, S), PrId, Wyj).  % Parse and execute the line
 
-%Parser - Parsing instructions, arithmetic and logic
+% Following lines of code are focused on parsing and executing lines of code
+
+% Parses assigning evalved value of WyrAryrm to variable Zmienna
 parse(
-	assign(Zmienna, WyrArytm),
+  assign(Zmienna, WyrArytm),
   state(V, A, S),
   PrId,
   state(Vw, A, Sw)
 ) :-
-  atom(Zmienna),
-  wyrArytm(WyrArytm, state(V, A, _), PrId, E),
-  update([Zmienna|E], V, Vw),
-  moveStep(state(_, _, S), PrId, state(_, _, Sw)).
+  atom(Zmienna),                                  % Check if can be assigned
+  wyrArytm(WyrArytm, state(V, A, _), PrId, E),    % Eval WyrArytm value
+  update([Zmienna|E], V, Vw),                     % Update current values list
+  moveStep(state(_, _, S), PrId, state(_, _, Sw)).% Finish codeline, go durther
 
+% Assign value to the array
 parse(
 	assign(array(Zmienna, WyrArytm1), WyrArytm2),
 	state(V, A, S),
@@ -122,25 +135,28 @@ parse(
 	state(V, Aw, Sw)
 ) :-
   atom(Zmienna),
-  wyrArytm(WyrArytm2, state(V, A, _), PrId, E),
-  wyrArytm(WyrArytm1, state(V, A, _), PrId, P),
-  get(Zmienna, A, [Arr|_]),
-  update([P|E], Arr, Arrw),
-  update([Zmienna|[Arrw]], A, Aw),
-  moveStep(state(_, _, S), PrId, state(_, _, Sw)).
+  wyrArytm(WyrArytm2, state(V, A, _), PrId, E),  % Eval value to be stored
+  wyrArytm(WyrArytm1, state(V, A, _), PrId, P),  % Eval array index for value
+  get(Zmienna, A, [Arr|_]),                      % Get an array named Zmienna
+  update([P|E], Arr, Arrw),                      % Update array with values
+  update([Zmienna|[Arrw]], A, Aw),               % Update arrays with an array
+  moveStep(state(_, _, S), PrId, state(_, _, Sw)). % Finish, go further
 
+% goto function parsing
 parse(goto(Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
-  update([PrId|Liczba], S, Sw).
+  update([PrId|Liczba], S, Sw).                 % Just go to Liczba code line
 
+% confitional goto function parsing
 parse(condGoto(WyrLogiczne, Liczba), state(V, A, S), PrId, state(V, A, Sw)) :-
-  wyrLogiczne(WyrLogiczne, state(V, A, _), PrId, Output),
+  wyrLogiczne(WyrLogiczne, state(V, A, _), PrId, Output), % Eval
   (Output == true
-    -> update([PrId|Liczba], S, Sw)
-    ; moveStep(state(V, A, S), PrId, state(V, A, Sw))
+    -> update([PrId|Liczba], S, Sw)                       % If true go to line
+    ; moveStep(state(V, A, S), PrId, state(V, A, Sw))     % Otherwise- further
   ).
 
-parse(sekcja, state(V, A, S), PrId, state(V, A, Sw)) :-
-  moveStep(state(V, A, S), PrId, state(V, A, Sw)).
+% parsing section
+parse(sekcja, state(V, A, S), PrId, state(V, A, Sw)) :-  % Section does nothing
+  moveStep(state(V, A, S), PrId, state(V, A, Sw)).       % Just go firther
 
 % Increases value of the current state of the value PrId by one
 moveStep(state(V, A, S), PrId, state(V, A, Sw)) :-
@@ -148,6 +164,7 @@ moveStep(state(V, A, S), PrId, state(V, A, Sw)) :-
   Step2 is Step + 1,
   update([PrId|Step2], S, Sw).
 
+% Mentioned before functions co create arrays, vatiables and list of pids
 buildArrays(A, Arrays, Arr) :- buildArrays(A, [], Arrays, Arr).
 buildArrays([], L, L, _).
 buildArrays([H|T], L, L0, Arr) :-
@@ -190,10 +207,12 @@ pidsList(N0, N, [N0| List]) :-
 % Update List under the Key
 update([K|V], AL, AL0) :- replace([K|_], [K|V], AL, AL0).
 
+% Replaces values
 replace(_, _, [], []).
 replace(O, R, [O|T], [R|T2]) :- replace(O, R, T, T2).
 replace(O, R, [H|T], [H|T2]) :- H \= O, replace(O, R, T, T2).
 
+% Puts new value
 put(KV, AL, AL0) :-
   KV = [K|V],
   get(K, AL, V),
@@ -202,10 +221,12 @@ put(KV, AL, AL0) :-
 
 put(KV, AL, [KV | AL]).
 
+% Gets value from the list
 get(K, AL, V):-
   member([K|V], AL).
 
-% zmienna() ....
+% zmienna(+Ident, +State, +Pid, -Output)
+% Returns value of the variable named Ident in state State
 zmienna(Ident, state(V, _, _), PrId, Output) :-
   atom(Ident),
   (Ident == pid
@@ -218,7 +239,9 @@ zmienna(array(Ident, WyrArytm), state(V, A, _), PrId, Output) :-
   get(Ident, A, [Array]),
   get(E, Array, Output).
 
-% wyrArytm()....
+% wyrArytm(+Wyr, +State, +Pid, -Output)
+% wyrArytm evals value of the arithmetical equation within state
+% Puts value in the output
 
 wyrArytm(WyrProste1+WyrProste2, state(V, A, _), PrId, Output) :-
   wyrArytm(WyrProste1, state(V, A, _), PrId, E1),
