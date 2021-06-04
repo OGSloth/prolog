@@ -53,11 +53,13 @@ runDFA(CurrSt, Program, N, Paths, StAcc, PrId, Wynik) :-
 runDFA(CurrSt, Program, N, Paths, StAcc, Wynik) :-(
   member(CurrSt, StAcc)                     % If node is checked, finish
   -> Wynik = StAcc                          % (This branch returns accumulator)
-  ; verifyCritSection(Program, CurrSt, X),  % Otherwise check critical sections
-  (X >= 2                                   % X >= 2 -> 2 or more pids in crit
+  ; verifyCritSection(Program, CurrSt, InSection),
+    length(InSection, Len),                 % Checks num of programs in section
+  (Len >= 2                                 % 2 or more pids in crit
   -> write("Program jest niepoprawny."), nl,
      write("Niepoprawny przeplot:"), nl,
-     printSteps(Paths), write(CurrSt), false % Failure handling
+     printSteps(Paths), 
+     printPidsInsideSection(InSection), false % Failure handling
   ; pidsList(N, NPL),                       % Initiate next transtitons
   fold(NPL, Wynik, [CurrSt|StAcc], runDFA(CurrSt, Program, N, Paths))
   ) % Go further, from node to transitioned nodes
@@ -71,24 +73,29 @@ getCurrentStep(PrId, state(_, _, S), Step) :- get(PrId, S, Step).
 
 % Checks how many programs are currently in critical section
 verifyCritSection(P, state(_, _, S), X) :- verifyCritSection(P, S, X).
-verifyCritSection(program(P), [[_|S]|T], X1) :-
+verifyCritSection(program(P), [[Pid|S]|T], X1) :-
   verifyCritSection(program(P), T, X), % Check recursivly
   S1 is S-1,                           % Align step and list iterations diffs
   (
     nth0(S1, P, sekcja)                % Check if program is in section
-    ->  X1 is X+1                      % If so, add one to the result
-    ; X1 is X                          % Otherwise continue
+    ->  X1 = [Pid|X]                   % If so, add one to the result
+    ; X1 = X                           % Otherwise continue
   ).
 
-verifyCritSection(_, [], 0).
+verifyCritSection(_, [], []).
 
 % Simple function to print path from initial state to 
 % critical section overlapse
 printSteps([]).
 printSteps([[PrId|Step]|T]) :-
   printSteps(T),
-  format('  Proces ~d: ~d', [PrId, Step]),nl.
+  format('  Proces ~d: ~d', [PrId, Step]), nl.
 
+% Final message about pids of proccesses inside the ssection
+printPidsInsideSection([Pid1, Pid2]) :-
+  write('Procesy w sekcji: '),
+  write(Pid1), write(', '),
+  write(Pid2), write('.'), nl.
 
 % Initial State
 % state(Variables, Arrays, Steps)
@@ -243,10 +250,10 @@ zmienna(array(Ident, WyrArytm), state(V, A, _), PrId, Output) :-
 % wyrArytm evals value of the arithmetical equation within state
 % Puts value in the output
 
-wyrArytm(WyrProste1+WyrProste2, state(V, A, _), PrId, Output) :-
-  wyrArytm(WyrProste1, state(V, A, _), PrId, E1),
-  wyrArytm(WyrProste2, state(V, A, _), PrId, E2),
-  Output is E1 + E2.
+wyrArytm(WyrProste1+WyrProste2, state(V, A, _), PrId, Output) :- % Parse input
+  wyrArytm(WyrProste1, state(V, A, _), PrId, E1), % Eval first part
+  wyrArytm(WyrProste2, state(V, A, _), PrId, E2), % Eval second part
+  Output is E1 + E2.                              % Return evalved1 op evalved2
 
 wyrArytm(WyrProste1-WyrProste2, state(V, A, _), PrId, Output) :-
   wyrArytm(WyrProste1, state(V, A, _), PrId, E1),
@@ -263,10 +270,11 @@ wyrArytm(WyrProste1/WyrProste2, state(V, A, _), PrId, Output) :-
   wyrArytm(WyrProste2, state(V, A, _), PrId, E2),
   Output is E1 / E2.
 
+% Finishing evalation
 wyrArytm(WyrProste, state(V, A, _), PrId, Output) :- (
   number(WyrProste)
-  -> Output is WyrProste
-  ; zmienna(WyrProste, state(V, A, _), PrId, Output)
+  -> Output is WyrProste                             % If number return number
+  ; zmienna(WyrProste, state(V, A, _), PrId, Output) % return varriable's value
   ).
 
 
